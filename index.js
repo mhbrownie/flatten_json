@@ -4,20 +4,37 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '20mb' }));
 
-function transformLabeledObject(obj) {
+function simplifyLabeledObject(obj) {
   if (typeof obj.label === 'string') {
+    const key = obj.label;
     if ('value' in obj) {
-      return { [obj.label]: obj.value || "" };
+      return { [key]: obj.value || "" };
     }
     if (Array.isArray(obj.values)) {
-      return { [obj.label]: obj.values[0] || "" };
+      return { [key]: obj.values[0] || "" };
     }
   }
-  return obj;
+  return null;
 }
 
-function transformAnswers(answers) {
-  return answers.map(ans => transformLabeledObject(ans));
+function extractAnswersFromRepeat(rows) {
+  const flattened = [];
+  for (const row of rows) {
+    const pages = row.pages || [];
+    for (const page of pages) {
+      const sections = page.sections || [];
+      for (const section of sections) {
+        const answers = section.answers || [];
+        for (const answer of answers) {
+          const simplified = simplifyLabeledObject(answer);
+          if (simplified) {
+            flattened.push(simplified);
+          }
+        }
+      }
+    }
+  }
+  return flattened;
 }
 
 function transform(obj) {
@@ -26,29 +43,18 @@ function transform(obj) {
   }
 
   if (obj && typeof obj === 'object') {
-    // Handle Repeat blocks by flattening their answers
+    // Handle Repeat blocks
     if (obj.type === 'Repeat' && Array.isArray(obj.rows)) {
-      const flattened = [];
-      for (const row of obj.rows) {
-        const pages = row.pages || [];
-        for (const page of pages) {
-          const sections = page.sections || [];
-          for (const section of sections) {
-            const answers = section.answers || [];
-            const simplified = transformAnswers(answers);
-            flattened.push(...simplified);
-          }
-        }
-      }
-      return flattened;
+      return extractAnswersFromRepeat(obj.rows);
     }
 
-    // Handle label/value(s) objects directly
+    // Handle objects with label/value or label/values directly
     if ('label' in obj && ('value' in obj || 'values' in obj)) {
-      return transformLabeledObject(obj);
+      const simplified = simplifyLabeledObject(obj);
+      if (simplified) return simplified;
     }
 
-    // Recurse through all children
+    // Recurse into children
     const result = {};
     for (const key in obj) {
       result[key] = transform(obj[key]);
@@ -70,9 +76,9 @@ app.post('/flatten', (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.send('🧩 JSON Transformer running.');
+  res.send('✅ JSON Transformer ready.');
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ Transformer listening on port ${PORT}`);
+  console.log(`🚀 Listening on port ${PORT}`);
 });
