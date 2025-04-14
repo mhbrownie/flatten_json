@@ -2,7 +2,6 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Accept large JSON payloads
 app.use(express.json({ limit: '10mb' }));
 
 function simplifyLabelObject(obj) {
@@ -17,51 +16,70 @@ function simplifyLabelObject(obj) {
   return obj;
 }
 
-function transform(obj, path = []) {
+function simplifyAnswerEntry(entry) {
+  const key = Object.keys(entry)[0];
+  return { [key]: entry[key] };
+}
+
+function collapseRepeatRows(rows) {
+  const collapsed = [];
+  for (const row of rows) {
+    const pages = row.pages || [];
+    for (const page of pages) {
+      const sections = page.sections || [];
+      for (const section of sections) {
+        const answers = section.answers || [];
+        if (Array.isArray(answers)) {
+          for (const entry of answers) {
+            collapsed.push(simplifyAnswerEntry(entry));
+          }
+        }
+      }
+    }
+  }
+  return collapsed;
+}
+
+function transform(obj, labelTrail = []) {
   if (Array.isArray(obj)) {
-    return obj.map(item => transform(item, path));
+    return obj.map(item => transform(item, labelTrail));
   }
 
   if (typeof obj === 'object' && obj !== null) {
-    const currentPath = [...path];
+    const currentLabel = obj.label || null;
+    const newTrail = currentLabel ? [...labelTrail, currentLabel] : [...labelTrail];
 
-    // 🎯 Special collapse for GearDetails > Item Details > Item Details 1
-    if (
-      currentPath.join('.') === 'GearDetails.Item Details' &&
-      'Item Details 1' in obj &&
-      Array.isArray(obj['Item Details 1'])
-    ) {
-      return obj['Item Details 1'].map(item => simplifyLabelObject(item));
+    // 🎯 Handle Repeat sections by collapsing deeply
+    if (obj.type === 'Repeat' && Array.isArray(obj.rows)) {
+      return collapseRepeatRows(obj.rows);
     }
 
-    // Handle label/value(s) objects
+    // 🎯 Simplify any label+value(s) object
     if (typeof obj.label === 'string' && (Array.isArray(obj.values) || 'value' in obj)) {
       return simplifyLabelObject(obj);
     }
 
-    const transformed = {};
+    const result = {};
     for (const key in obj) {
-      transformed[key] = transform(obj[key], [...currentPath, key]);
+      result[key] = transform(obj[key], newTrail);
     }
-    return transformed;
+    return result;
   }
 
   return obj;
 }
-
-
 
 app.post('/flatten', (req, res) => {
   try {
     const simplified = transform(req.body);
     res.json(simplified);
   } catch (e) {
-    res.status(400).json({ error: 'Invalid JSON or structure' });
+    res.status(400).json({ error: 'Invalid JSON or structure', detail: e.message });
   }
 });
 
 app.get('/', (req, res) => {
-  res.send('Label flattener service running.');
+  res.send('JSON Structure Flattener API is running.');
 });
 
 app.listen(PORT, () => {
