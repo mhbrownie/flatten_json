@@ -12,8 +12,8 @@ function transform(obj) {
 
   if (typeof obj === 'object' && obj !== null) {
     if (typeof obj.label === 'string') {
-      if (Array.isArray(obj.values) && obj.values.length > 0) {
-        return { [obj.label]: obj.values[0] };
+      if (Array.isArray(obj.values)) {
+        return { [obj.label]: obj.values[0] || "" }; // always transform
       }
       if ('value' in obj) {
         return { [obj.label]: obj.value };
@@ -29,6 +29,7 @@ function transform(obj) {
 
   return obj;
 }
+
 
 app.post('/flatten', (req, res) => {
   try {
