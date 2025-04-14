@@ -4,36 +4,31 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '20mb' }));
 
-// Simplifies: { label + value/values } → { "Label": "Value" }
 function simplifyLabeledObject(obj) {
   if (typeof obj.label === 'string') {
-    const key = obj.label;
-    if ('value' in obj) return { [key]: obj.value || "" };
-    if (Array.isArray(obj.values)) return { [key]: obj.values[0] || "" };
+    const label = obj.label;
+    if ('value' in obj) return { [label]: obj.value || "" };
+    if (Array.isArray(obj.values)) return { [label]: obj.values[0] || "" };
   }
   return null;
 }
 
-// Extract and simplify answers from deeply nested structure
 function extractSimplifiedAnswers(row) {
-  const simplified = [];
+  const result = [];
   const pages = row.pages || [];
   for (const page of pages) {
     const sections = page.sections || [];
     for (const section of sections) {
       const answers = section.answers || [];
       for (const answer of answers) {
-        const simplifiedEntry = simplifyLabeledObject(answer);
-        if (simplifiedEntry) {
-          simplified.push(simplifiedEntry);
-        }
+        const simplified = simplifyLabeledObject(answer);
+        if (simplified) result.push(simplified);
       }
     }
   }
-  return simplified;
+  return result;
 }
 
-// Recursively transforms the entire object
 function transform(obj) {
   if (Array.isArray(obj)) {
     return obj.map(transform);
@@ -46,21 +41,19 @@ function transform(obj) {
         type: obj.type,
         label: obj.label,
         name: obj.name,
-        rows: obj.rows.map(row => {
-          return {
-            answers: extractSimplifiedAnswers(row)
-          };
-        })
+        rows: obj.rows.map(row => ({
+          answers: extractSimplifiedAnswers(row)
+        }))
       };
     }
 
-    // Simplify single labeled objects outside Repeat
+    // Handle simple labeled objects
     if ('label' in obj && ('value' in obj || 'values' in obj)) {
       const simplified = simplifyLabeledObject(obj);
       if (simplified) return simplified;
     }
 
-    // Recurse normally
+    // Recurse on regular objects
     const result = {};
     for (const key in obj) {
       result[key] = transform(obj[key]);
@@ -76,15 +69,15 @@ app.post('/flatten', (req, res) => {
     const output = transform(req.body);
     res.json(output);
   } catch (e) {
-    console.error('Transform error:', e);
+    console.error('❌ Transform error:', e);
     res.status(500).json({ error: 'Failed to process input.' });
   }
 });
 
 app.get('/', (req, res) => {
-  res.send('🧩 JSON Transformer is running.');
+  res.send('🧩 JSON Transformer API is running. POST to /flatten');
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🚀 Transformer API running on port ${PORT}`);
 });
