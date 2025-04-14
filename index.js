@@ -4,64 +4,57 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '10mb' }));
 
-function simplifyLabelObject(obj) {
+function simplifyLabeledObject(obj) {
   if (typeof obj.label === 'string') {
-    if (Array.isArray(obj.values)) {
-      return { [obj.label]: obj.values[0] || "" };
-    }
+    const label = obj.label;
     if ('value' in obj) {
-      return { [obj.label]: obj.value };
+      return { [label]: obj.value || "" };
+    }
+    if (Array.isArray(obj.values)) {
+      return { [label]: obj.values[0] || "" };
     }
   }
   return obj;
 }
 
-function simplifyAnswerEntry(entry) {
-  const key = Object.keys(entry)[0];
-  return { [key]: entry[key] };
-}
-
-function collapseRepeatRows(rows) {
-  const collapsed = [];
+function extractAnswersFromRepeat(rows) {
+  const simplified = [];
   for (const row of rows) {
     const pages = row.pages || [];
     for (const page of pages) {
       const sections = page.sections || [];
       for (const section of sections) {
         const answers = section.answers || [];
-        if (Array.isArray(answers)) {
-          for (const entry of answers) {
-            collapsed.push(simplifyAnswerEntry(entry));
-          }
+        for (const ans of answers) {
+          const key = Object.keys(ans)[0];
+          simplified.push({ [key]: ans[key] || "" });
         }
       }
     }
   }
-  return collapsed;
+  return simplified;
 }
 
-function transform(obj, labelTrail = []) {
+function transform(obj) {
   if (Array.isArray(obj)) {
-    return obj.map(item => transform(item, labelTrail));
+    return obj.map(transform);
   }
 
   if (typeof obj === 'object' && obj !== null) {
-    const currentLabel = obj.label || null;
-    const newTrail = currentLabel ? [...labelTrail, currentLabel] : [...labelTrail];
+    // Handle labeled element with value(s)
+    if (typeof obj.label === 'string' && ('value' in obj || 'values' in obj)) {
+      return simplifyLabeledObject(obj);
+    }
 
-    // 🎯 Handle Repeat sections by collapsing deeply
+    // Handle Repeat type with rows
     if (obj.type === 'Repeat' && Array.isArray(obj.rows)) {
-      return collapseRepeatRows(obj.rows);
+      return extractAnswersFromRepeat(obj.rows);
     }
 
-    // 🎯 Simplify any label+value(s) object
-    if (typeof obj.label === 'string' && (Array.isArray(obj.values) || 'value' in obj)) {
-      return simplifyLabelObject(obj);
-    }
-
+    // Otherwise recurse
     const result = {};
     for (const key in obj) {
-      result[key] = transform(obj[key], newTrail);
+      result[key] = transform(obj[key]);
     }
     return result;
   }
@@ -71,17 +64,18 @@ function transform(obj, labelTrail = []) {
 
 app.post('/flatten', (req, res) => {
   try {
-    const simplified = transform(req.body);
-    res.json(simplified);
+    const result = transform(req.body);
+    res.json(result);
   } catch (e) {
-    res.status(400).json({ error: 'Invalid JSON or structure', detail: e.message });
+    console.error("Error:", e);
+    res.status(400).json({ error: 'Invalid JSON or processing failed.' });
   }
 });
 
 app.get('/', (req, res) => {
-  res.send('JSON Structure Flattener API is running.');
+  res.send('Complex JSON transformer running.');
 });
 
 app.listen(PORT, () => {
-  console.log(`Server is listening on port ${PORT}`);
+  console.log(`Server listening on port ${PORT}`);
 });
