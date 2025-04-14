@@ -4,6 +4,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '20mb' }));
 
+// Transform { label + value/values } into { label: value }
 function simplifyLabeledObject(obj) {
   if (typeof obj.label === 'string') {
     const key = obj.label;
@@ -14,48 +15,56 @@ function simplifyLabeledObject(obj) {
       return { [key]: obj.values[0] || "" };
     }
   }
-  return null;
+  return obj;
 }
 
-function extractAnswersFromRepeat(rows) {
-  const flattened = [];
-  for (const row of rows) {
-    const pages = row.pages || [];
-    for (const page of pages) {
-      const sections = page.sections || [];
-      for (const section of sections) {
-        const answers = section.answers || [];
-        for (const answer of answers) {
-          const simplified = simplifyLabeledObject(answer);
-          if (simplified) {
-            flattened.push(simplified);
-          }
-        }
-      }
-    }
-  }
-  return flattened;
+// Transform any array of answers using the same label logic
+function transformAnswers(answers) {
+  return answers.map(simplifyLabeledObject);
 }
 
+// Recursively transform the JSON structure
 function transform(obj) {
   if (Array.isArray(obj)) {
     return obj.map(transform);
   }
 
   if (obj && typeof obj === 'object') {
-    // Handle Repeat blocks
-    if (obj.type === 'Repeat' && Array.isArray(obj.rows)) {
-      return extractAnswersFromRepeat(obj.rows);
-    }
-
-    // Handle objects with label/value or label/values directly
-    if ('label' in obj && ('value' in obj || 'values' in obj)) {
-      const simplified = simplifyLabeledObject(obj);
-      if (simplified) return simplified;
-    }
-
-    // Recurse into children
     const result = {};
+
+    // Special handling for Repeat
+    if (obj.type === 'Repeat' && Array.isArray(obj.rows)) {
+      result.type = obj.type;
+      result.label = obj.label;
+      result.name = obj.name;
+      result.rows = obj.rows.map(row => {
+        const newRow = { ...row };
+        if (Array.isArray(newRow.pages)) {
+          newRow.pages = newRow.pages.map(page => {
+            const newPage = { ...page };
+            if (Array.isArray(newPage.sections)) {
+              newPage.sections = newPage.sections.map(section => {
+                const newSection = { ...section };
+                if (Array.isArray(newSection.answers)) {
+                  newSection.answers = transformAnswers(newSection.answers);
+                }
+                return newSection;
+              });
+            }
+            return newPage;
+          });
+        }
+        return newRow;
+      });
+      return result;
+    }
+
+    // Handle labeled objects outside Repeat
+    if ('label' in obj && ('value' in obj || 'values' in obj)) {
+      return simplifyLabeledObject(obj);
+    }
+
+    // Recurse on regular objects
     for (const key in obj) {
       result[key] = transform(obj[key]);
     }
@@ -76,9 +85,9 @@ app.post('/flatten', (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.send('✅ JSON Transformer ready.');
+  res.send('✅ Structured JSON Transformer is running.');
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Listening on port ${PORT}`);
+  console.log(`🚀 JSON Transformer listening on port ${PORT}`);
 });
