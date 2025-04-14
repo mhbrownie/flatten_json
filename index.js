@@ -4,67 +4,64 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '20mb' }));
 
-// Transform { label + value/values } into { label: value }
+// Simplifies: { label + value/values } → { "Label": "Value" }
 function simplifyLabeledObject(obj) {
   if (typeof obj.label === 'string') {
     const key = obj.label;
-    if ('value' in obj) {
-      return { [key]: obj.value || "" };
-    }
-    if (Array.isArray(obj.values)) {
-      return { [key]: obj.values[0] || "" };
+    if ('value' in obj) return { [key]: obj.value || "" };
+    if (Array.isArray(obj.values)) return { [key]: obj.values[0] || "" };
+  }
+  return null;
+}
+
+// Extract and simplify answers from deeply nested structure
+function extractSimplifiedAnswers(row) {
+  const simplified = [];
+  const pages = row.pages || [];
+  for (const page of pages) {
+    const sections = page.sections || [];
+    for (const section of sections) {
+      const answers = section.answers || [];
+      for (const answer of answers) {
+        const simplifiedEntry = simplifyLabeledObject(answer);
+        if (simplifiedEntry) {
+          simplified.push(simplifiedEntry);
+        }
+      }
     }
   }
-  return obj;
+  return simplified;
 }
 
-// Transform any array of answers using the same label logic
-function transformAnswers(answers) {
-  return answers.map(simplifyLabeledObject);
-}
-
-// Recursively transform the JSON structure
+// Recursively transforms the entire object
 function transform(obj) {
   if (Array.isArray(obj)) {
     return obj.map(transform);
   }
 
   if (obj && typeof obj === 'object') {
-    const result = {};
-
-    // Special handling for Repeat
+    // Special handling for Repeat blocks
     if (obj.type === 'Repeat' && Array.isArray(obj.rows)) {
-      result.type = obj.type;
-      result.label = obj.label;
-      result.name = obj.name;
-      result.rows = obj.rows.map(row => {
-        const newRow = { ...row };
-        if (Array.isArray(newRow.pages)) {
-          newRow.pages = newRow.pages.map(page => {
-            const newPage = { ...page };
-            if (Array.isArray(newPage.sections)) {
-              newPage.sections = newPage.sections.map(section => {
-                const newSection = { ...section };
-                if (Array.isArray(newSection.answers)) {
-                  newSection.answers = transformAnswers(newSection.answers);
-                }
-                return newSection;
-              });
-            }
-            return newPage;
-          });
-        }
-        return newRow;
-      });
-      return result;
+      return {
+        type: obj.type,
+        label: obj.label,
+        name: obj.name,
+        rows: obj.rows.map(row => {
+          return {
+            answers: extractSimplifiedAnswers(row)
+          };
+        })
+      };
     }
 
-    // Handle labeled objects outside Repeat
+    // Simplify single labeled objects outside Repeat
     if ('label' in obj && ('value' in obj || 'values' in obj)) {
-      return simplifyLabeledObject(obj);
+      const simplified = simplifyLabeledObject(obj);
+      if (simplified) return simplified;
     }
 
-    // Recurse on regular objects
+    // Recurse normally
+    const result = {};
     for (const key in obj) {
       result[key] = transform(obj[key]);
     }
@@ -85,9 +82,9 @@ app.post('/flatten', (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.send('✅ Structured JSON Transformer is running.');
+  res.send('🧩 JSON Transformer is running.');
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 JSON Transformer listening on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
