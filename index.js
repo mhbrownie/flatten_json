@@ -2,31 +2,36 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Support large payloads
 app.use(express.json({ limit: '10mb' }));
 
-function extractLabels(obj, result = {}) {
+function transform(obj) {
   if (Array.isArray(obj)) {
-    for (const item of obj) {
-      extractLabels(item, result);
-    }
-  } else if (typeof obj === 'object' && obj !== null) {
+    return obj.map(transform);
+  }
+
+  if (typeof obj === 'object' && obj !== null) {
     if (
       typeof obj.label === 'string' &&
       Array.isArray(obj.values) &&
       obj.values.length > 0
     ) {
-      result[obj.label] = obj.values[0]; // or join(', ') for all
+      return { [obj.label]: obj.values[0] };
     }
+
+    const transformed = {};
     for (const key in obj) {
-      extractLabels(obj[key], result);
+      transformed[key] = transform(obj[key]);
     }
+    return transformed;
   }
-  return result;
+
+  return obj;
 }
 
 app.post('/flatten', (req, res) => {
   try {
-    const simplified = extractLabels(req.body);
+    const simplified = transform(req.body);
     res.json(simplified);
   } catch (e) {
     res.status(400).json({ error: 'Invalid JSON or structure' });
@@ -34,7 +39,7 @@ app.post('/flatten', (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.send('JSON Flattener is running!');
+  res.send('JSON Structure Preserving Flattener is running!');
 });
 
 app.listen(PORT, () => {
