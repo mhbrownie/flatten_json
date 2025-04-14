@@ -2,7 +2,7 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Support large payloads
+// Accept large JSON payloads
 app.use(express.json({ limit: '10mb' }));
 
 function transform(obj) {
@@ -11,12 +11,13 @@ function transform(obj) {
   }
 
   if (typeof obj === 'object' && obj !== null) {
-    if (
-      typeof obj.label === 'string' &&
-      Array.isArray(obj.values) &&
-      obj.values.length > 0
-    ) {
-      return { [obj.label]: obj.values[0] };
+    if (typeof obj.label === 'string') {
+      if (Array.isArray(obj.values) && obj.values.length > 0) {
+        return { [obj.label]: obj.values[0] };
+      }
+      if ('value' in obj) {
+        return { [obj.label]: obj.value };
+      }
     }
 
     const transformed = {};
@@ -39,7 +40,7 @@ app.post('/flatten', (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.send('JSON Structure Preserving Flattener is running!');
+  res.send('Label flattener service running.');
 });
 
 app.listen(PORT, () => {
