@@ -5,19 +5,19 @@ const bodyParser = require("body-parser");
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Increase body size limit to avoid payload too large errors
 app.use(bodyParser.json({ limit: "20mb" }));
-
 
 function simplifyAnswers(answers) {
   const simplified = {};
   for (const ans of answers) {
-    const label = ans.label;
+    const label = ans?.label || "unknown";
     let value = "";
     if ("value" in ans) {
       value = ans.value;
     } else if (Array.isArray(ans.values) && ans.values.length > 0) {
       if (typeof ans.values[0] === "object") {
-        value = ans.values[0].value || "";
+        value = ans.values[0]?.value || "";
       } else {
         value = ans.values[0];
       }
@@ -28,7 +28,7 @@ function simplifyAnswers(answers) {
 }
 
 function buildHierarchy(node, hierarchy = [], result = {}) {
-  if (typeof node === "object" && !Array.isArray(node)) {
+  if (typeof node === "object" && node !== null && !Array.isArray(node)) {
     const label = node.label;
     if (label) hierarchy = [...hierarchy, label];
 
@@ -58,7 +58,7 @@ function buildHierarchy(node, hierarchy = [], result = {}) {
       }
     } else {
       for (const key in node) {
-        if (key !== "rows" && typeof node[key] === "object") {
+        if (key !== "rows" && typeof node[key] === "object" && node[key] !== null) {
           buildHierarchy(node[key], hierarchy, result);
         }
       }
@@ -73,10 +73,15 @@ function buildHierarchy(node, hierarchy = [], result = {}) {
 }
 
 app.post("/transform", (req, res) => {
-  const json = req.body;
-  const data = Array.isArray(json) ? json[0] : json;
-  const transformed = buildHierarchy(data);
-  res.json(transformed);
+  try {
+    const json = req.body;
+    const data = Array.isArray(json) ? json[0] : json;
+    const transformed = buildHierarchy(data);
+    res.json(transformed);
+  } catch (error) {
+    console.error("Transform error:", error);
+    res.status(500).json({ error: "Failed to transform JSON" });
+  }
 });
 
 app.get("/", (req, res) => {
