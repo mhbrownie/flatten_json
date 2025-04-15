@@ -2,69 +2,90 @@ const express = require('express');
 const app = express();
 app.use(express.json({ limit: '20mb' }));
 
-function simplifyElement(el) {
-  if (el && typeof el === 'object' && el.label) {
-    if ('value' in el) return { [el.label]: el.value || "" };
-    if (Array.isArray(el.values)) return { [el.label]: el.values[0] || "" };
+function simplifyAnswers(answers) {
+  const simplified = {};
+  for (const answer of answers) {
+    if (answer && typeof answer === 'object') {
+      const label = answer.label || '';
+      if (!label) continue;
+      let value = '';
+      if ('value' in answer) {
+        value = answer.value || '';
+      } else if (Array.isArray(answer.values) && answer.values.length > 0) {
+        value = answer.values[0];
+      }
+      simplified[label] = value;
+    }
   }
-  return null;
+  return simplified;
 }
 
-function simplifyJson(obj) {
-  if (Array.isArray(obj)) return obj.map(simplifyJson);
-  if (obj && typeof obj === 'object') {
-    const result = {};
-    for (const [k, v] of Object.entries(obj)) {
-      const simplified = simplifyElement(v);
-      if (simplified) Object.assign(result, simplified);
-      else result[k] = simplifyJson(v);
-    }
-    return result;
-  }
-  return obj;
-}
+function transformGroupedByLabel(data) {
+  const output = [];
 
-function extractNamedRows(obj, pageLabel = '', sectionLabel = '', output = {}) {
-  if (Array.isArray(obj)) {
-    obj.forEach(item => extractNamedRows(item, pageLabel, sectionLabel, output));
-  } else if (obj && typeof obj === 'object') {
-    if (Array.isArray(obj.rows)) {
-      const key = `${pageLabel}.${sectionLabel}`.replace(/^\./, '');
-      output[key] = output[key] || [];
-      obj.rows.forEach(row => output[key].push(simplifyJson(row)));
+  for (const record of data) {
+    const grouped = {};
+
+    function processNode(node, context = '') {
+      if (Array.isArray(node)) {
+        for (const item of node) {
+          processNode(item, context);
+        }
+      } else if (node && typeof node === 'object') {
+        const currentLabel = node.label || context;
+
+        if (Array.isArray(node.answers)) {
+          const simplified = simplifyAnswers(node.answers);
+          if (!grouped[currentLabel]) grouped[currentLabel] = [];
+          grouped[currentLabel].push(simplified);
+        }
+
+        if (Array.isArray(node.rows)) {
+          for (const row of node.rows) {
+            const pages = row.pages || [];
+            for (const page of pages) {
+              const pageLabel = page.label || 'UnnamedPage';
+              const sections = page.sections || [];
+              for (const section of sections) {
+                const sectionLabel = section.label || 'UnnamedSection';
+                const key = `${pageLabel}.${sectionLabel}`;
+                const simplified = simplifyAnswers(section.answers || []);
+                if (!grouped[key]) grouped[key] = [];
+                grouped[key].push(simplified);
+              }
+            }
+          }
+        }
+
+        for (const val of Object.values(node)) {
+          processNode(val, currentLabel);
+        }
+      }
     }
-    for (const [k, v] of Object.entries(obj)) {
-      const nextPage = obj.label && k === 'pages' ? obj.label : pageLabel;
-      const nextSection = obj.label && k === 'sections' ? obj.label : sectionLabel;
-      extractNamedRows(v, nextPage, nextSection, output);
-    }
+
+    processNode(record);
+    output.push(grouped);
   }
+
   return output;
 }
 
 app.post('/transform', (req, res) => {
   try {
     const input = req.body;
-    const result = Array.isArray(input)
-      ? input.map(entry => ({
-          ...simplifyJson(entry),
-          rowGroups: extractNamedRows(entry)
-        }))
-      : {
-          ...simplifyJson(input),
-          rowGroups: extractNamedRows(input)
-        };
+    const data = Array.isArray(input) ? input : [input];
+    const result = transformGroupedByLabel(data);
     res.json(result);
-  } catch (err) {
-    console.error('Error:', err);
-    res.status(500).json({ error: 'Invalid input' });
+  } catch (e) {
+    console.error('❌ Error during transformation:', e);
+    res.status(500).json({ error: 'Transformation failed.' });
   }
 });
 
 app.get('/', (req, res) => {
-  res.send('✅ POST your TrueContext JSON to /transform');
+  res.send('✅ POST your JSON to /transform to simplify it for Make.com');
 });
 
 app.listen(process.env.PORT || 3000, () => {
-  console.log('🚀 Transformer service running...');
+  console.log('🚀 JSON Transformer API running...');
 });
