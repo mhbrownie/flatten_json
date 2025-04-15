@@ -24,52 +24,14 @@ function simplifyJson(obj) {
   return obj;
 }
 
-function extractNamedRows(data) {
-  const output = {};
-
-  function recurse(obj, pageLabel = "", sectionLabel = "") {
-    if (Array.isArray(obj)) {
-      obj.forEach(item => recurse(item, pageLabel, sectionLabel));
-    } else if (obj && typeof obj === 'object') {
-      if (Array.isArray(obj.rows)) {
-        const name = [pageLabel, sectionLabel].filter(Boolean).join(".");
-        output[name] = output[name] || [];
-        obj.rows.forEach(row => output[name].push(simplifyJson(row)));
-      }
-      for (const [k, v] of Object.entries(obj)) {
-        const nextPage = obj.label && !pageLabel ? obj.label : pageLabel;
-        const nextSection = k === "sections" && obj.label ? obj.label : sectionLabel;
-        recurse(v, nextPage, nextSection);
-      }
+function extractNamedRows(obj, pageLabel = '', sectionLabel = '', output = {}) {
+  if (Array.isArray(obj)) {
+    obj.forEach(item => extractNamedRows(item, pageLabel, sectionLabel, output));
+  } else if (obj && typeof obj === 'object') {
+    if (Array.isArray(obj.rows)) {
+      const key = `${pageLabel}.${sectionLabel}`.replace(/^\./, '');
+      output[key] = output[key] || [];
+      obj.rows.forEach(row => output[key].push(simplifyJson(row)));
     }
-  }
-
-  recurse(data);
-  return output;
-}
-
-app.post('/transform', (req, res) => {
-  try {
-    const input = req.body;
-    const result = Array.isArray(input) ? input.map(entry => {
-      const simplified = simplifyJson(entry);
-      simplified.rowGroups = extractNamedRows(entry);
-      return simplified;
-    }) : {
-      ...simplifyJson(input),
-      rowGroups: extractNamedRows(input)
-    };
-    res.json(result);
-  } catch (e) {
-    console.error('❌ Error:', e);
-    res.status(500).json({ error: 'Invalid input or internal error.' });
-  }
-});
-
-app.get('/', (req, res) => {
-  res.send('🧩 POST JSON to /transform to flatten and structure it for Make.com');
-});
-
-app.listen(process.env.PORT || 3000, () => {
-  console.log('🚀 Service running...');
-});
+    for (const [k, v] of Object.entries(obj)) {
+      const nextPage = obj.label && k === 'pages' ? obj.label : pageLabel
