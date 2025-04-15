@@ -34,4 +34,37 @@ function extractNamedRows(obj, pageLabel = '', sectionLabel = '', output = {}) {
       obj.rows.forEach(row => output[key].push(simplifyJson(row)));
     }
     for (const [k, v] of Object.entries(obj)) {
-      const nextPage = obj.label && k === 'pages' ? obj.label : pageLabel
+      const nextPage = obj.label && k === 'pages' ? obj.label : pageLabel;
+      const nextSection = obj.label && k === 'sections' ? obj.label : sectionLabel;
+      extractNamedRows(v, nextPage, nextSection, output);
+    }
+  }
+  return output;
+}
+
+app.post('/transform', (req, res) => {
+  try {
+    const input = req.body;
+    const result = Array.isArray(input)
+      ? input.map(entry => ({
+          ...simplifyJson(entry),
+          rowGroups: extractNamedRows(entry)
+        }))
+      : {
+          ...simplifyJson(input),
+          rowGroups: extractNamedRows(input)
+        };
+    res.json(result);
+  } catch (err) {
+    console.error('Error:', err);
+    res.status(500).json({ error: 'Invalid input' });
+  }
+});
+
+app.get('/', (req, res) => {
+  res.send('✅ POST your TrueContext JSON to /transform');
+});
+
+app.listen(process.env.PORT || 3000, () => {
+  console.log('🚀 Transformer service running...');
+});
