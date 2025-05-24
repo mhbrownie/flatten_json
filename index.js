@@ -78,6 +78,12 @@ app.post("/transform", async (req, res) => {
     const data = Array.isArray(json) ? json[0] : json;
     const transformed = buildHierarchy(data);
 
+    // Include root-level identifier
+    const output = {
+      identifier: data.identifier || null,
+      ...transformed,
+    };
+
     // Forwarding logic
     const forwardUrl = req.query.forward_url;
     if (forwardUrl) {
@@ -85,7 +91,7 @@ app.post("/transform", async (req, res) => {
         const response = await fetch(forwardUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(transformed),
+          body: JSON.stringify(output),
         });
         console.log(`Forwarded to ${forwardUrl}, response status: ${response.status}`);
       } catch (err) {
@@ -93,12 +99,13 @@ app.post("/transform", async (req, res) => {
       }
     }
 
-    res.json(transformed);
+    res.json(output);
   } catch (error) {
     console.error("Transform error:", error);
     res.status(500).json({ error: "Failed to transform JSON" });
   }
 });
+
 
 
 app.get("/", (req, res) => {
