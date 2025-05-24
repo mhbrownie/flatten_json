@@ -72,17 +72,34 @@ function buildHierarchy(node, hierarchy = [], result = {}) {
   return result;
 }
 
-app.post("/transform", (req, res) => {
+app.post("/transform", async (req, res) => {
   try {
     const json = req.body;
     const data = Array.isArray(json) ? json[0] : json;
     const transformed = buildHierarchy(data);
+
+    // Forwarding logic
+    const forwardUrl = req.query.forward_url;
+    if (forwardUrl) {
+      try {
+        const response = await fetch(forwardUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(transformed),
+        });
+        console.log(`Forwarded to ${forwardUrl}, response status: ${response.status}`);
+      } catch (err) {
+        console.error(`Failed to forward to ${forwardUrl}:`, err);
+      }
+    }
+
     res.json(transformed);
   } catch (error) {
     console.error("Transform error:", error);
     res.status(500).json({ error: "Failed to transform JSON" });
   }
 });
+
 
 app.get("/", (req, res) => {
   res.send("JSON Transformation Service Running");
