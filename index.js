@@ -57,27 +57,37 @@ async function simplifyAnswers(answers) {
     const label = ans?.label || "unknown";
     let value = "";
 
-    if ("value" in ans) {
-      value = ans.value;
+    const isFileObject = (obj) =>
+      obj &&
+      typeof obj === "object" &&
+      typeof obj.bytes === "string" &&
+      "filename" in obj &&
+      "contentType" in obj;
+
+    // Case 1: Single file object under "value"
+    if (isFileObject(ans.value)) {
+      console.log(`[📎] Detected single file upload for "${label}"`);
+      const uploaded = await uploadFileToBubble(ans.value);
+      value = uploaded;
+
+    // Case 2: Array of file objects under "values"
+    } else if (Array.isArray(ans.values) && ans.values.length > 0 && isFileObject(ans.values[0])) {
+      console.log(`[📎] Detected multiple file uploads for "${label}"`);
+      const uploaded = await Promise.all(ans.values.map(uploadFileToBubble));
+      value = uploaded.length === 1 ? uploaded[0] : uploaded;
+
+    // Case 3: Array of primitive or value objects
     } else if (Array.isArray(ans.values) && ans.values.length > 0) {
       const first = ans.values[0];
-
-      const isFileArray =
-        first &&
-        typeof first === "object" &&
-        "bytes" in first &&
-        "filename" in first &&
-        typeof first.bytes === "string";
-
-      if (isFileArray) {
-        console.log(`[📎] Detected file upload for "${label}"`);
-        const uploaded = await Promise.all(ans.values.map(uploadFileToBubble));
-        value = uploaded;
-      } else if (typeof first === "object" && "value" in first) {
+      if (typeof first === "object" && "value" in first) {
         value = first.value;
       } else {
         value = first;
       }
+
+    // Case 4: Simple field with scalar value
+    } else if ("value" in ans) {
+      value = ans.value;
     }
 
     simplified[label] = value;
@@ -86,6 +96,7 @@ async function simplifyAnswers(answers) {
   console.log(`[🧾] Simplified answers:`, simplified);
   return simplified;
 }
+
 
 async function buildHierarchy(node, hierarchy = [], result = {}) {
   if (typeof node === "object" && node !== null && !Array.isArray(node)) {
