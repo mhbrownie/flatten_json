@@ -51,11 +51,13 @@ async function uploadFileToBubble(file) {
 }
 
 async function simplifyAnswers(answers) {
+
+
   const simplified = {};
   for (const ans of answers) {
     const label = ans?.label || "unknown";
     let value = "";
-
+    console.log(`[🔎] Inspecting answer:`, JSON.stringify(ans, null, 2));
     if ("value" in ans) {
       value = ans.value;
     } else if (Array.isArray(ans.values) && ans.values.length > 0) {
