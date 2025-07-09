@@ -51,23 +51,30 @@ async function uploadFileToBubble(file) {
 }
 
 async function simplifyAnswers(answers) {
-
-
   const simplified = {};
+
   for (const ans of answers) {
     const label = ans?.label || "unknown";
     let value = "";
-    console.log(`[🔎] Inspecting answer:`, JSON.stringify(ans, null, 2));
+
     if ("value" in ans) {
       value = ans.value;
     } else if (Array.isArray(ans.values) && ans.values.length > 0) {
       const first = ans.values[0];
-      if (typeof first === "object" && first !== null && "bytes" in first) {
-        console.log(`[📎] Detected embedded file(s) for "${label}"`);
-        const uploaded = await Promise.all(ans.values.map(file => uploadFileToBubble(file)));
+
+      const isFileArray =
+        first &&
+        typeof first === "object" &&
+        "bytes" in first &&
+        "filename" in first &&
+        typeof first.bytes === "string";
+
+      if (isFileArray) {
+        console.log(`[📎] Detected file upload for "${label}"`);
+        const uploaded = await Promise.all(ans.values.map(uploadFileToBubble));
         value = uploaded;
-      } else if (typeof first === "object") {
-        value = first?.value || "";
+      } else if (typeof first === "object" && "value" in first) {
+        value = first.value;
       } else {
         value = first;
       }
